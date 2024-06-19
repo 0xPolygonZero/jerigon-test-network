@@ -1,0 +1,58 @@
+version: '3.3'
+services:
+  node-1:
+    image: ghcr.io/0xpolygonzero/erigon:${JERIGON_VERSION}
+    container_name: node-1
+    init: true
+    command:
+      - '--datadir=/home/erigon/.local/share/erigon'
+      - '--chain=dev'
+      - '--private.api.addr=0.0.0.0:9090'
+      - '--mine'
+      - '--http.api=eth,erigon,web3,net,debug,trace,txpool,parity,admin'
+      - "--http.corsdomain='*'"
+      - '--http.addr=0.0.0.0'
+      - '--http.port=$NODE1_RPC_PORT'
+      - '--p2p.allowed-ports=30303'
+      - '--p2p.protocol=67'
+    ports:
+      - $NODE1_RPC_PORT:$NODE1_RPC_PORT
+      - '30303'
+    volumes:
+      - erigon-data:/home/erigon/.local/share/
+      - ./assets/nodekey:/home/erigon/.local/share/erigon/nodekey
+    environment:
+      - NODE1_RPC_PORT=${NODE1_RPC_PORT}
+
+  node-2:
+    image: ghcr.io/0xpolygonzero/erigon:${JERIGON_VERSION}
+    # entrypoint: ['/bin/sh']
+    container_name: node-2
+    init: true
+    user: root
+    command:
+      - '--chain=dev'
+      - '--mine'
+      - '--private.api.addr=localhost:9090'
+      - '--datadir=/home/erigon/.local/share/erigon2'
+      - '--http.addr=0.0.0.0'
+      - '--http.port=$NODE2_RPC_PORT'
+      - '--http.api=eth,erigon,web3,net,debug,trace,txpool,parity,admin'
+      - '--staticpeers=enode://$NODE1_ENODE@node-1:30303'
+      - '--http.corsdomain="*"'
+    depends_on:
+      node-1:
+        condition: service_started
+    ports:
+      - $NODE2_RPC_PORT:$NODE2_RPC_PORT
+      - '30304'
+      - '30303'
+    volumes:
+      - erigon-data:/home/erigon/.local/share/
+    environment:
+      - NODE2_RPC_PORT=${NODE2_RPC_PORT}
+      - NODE1_ENODE=${NODE1_ENODE}
+
+volumes:
+  erigon-data:
+  proof-data:
