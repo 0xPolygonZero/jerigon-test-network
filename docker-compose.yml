@@ -1,4 +1,13 @@
 version: '3.3'
+networks:
+  jerigon-test-network:
+    driver: bridge
+    name: jerigon-test-network
+    ipam:
+     config:
+       - subnet: 10.5.0.0/16
+         gateway: 10.5.0.1
+
 services:
   node-1:
     image: ghcr.io/0xpolygonzero/erigon:${JERIGON_VERSION}
@@ -23,13 +32,19 @@ services:
       - ./assets/nodekey:/home/erigon/.local/share/erigon/nodekey
     environment:
       - NODE1_RPC_PORT=${NODE1_RPC_PORT}
+    networks:
+      jerigon-test-network:
+        ipv4_address: ${NODE1_RPC_HOST}
 
   node-2:
     image: ghcr.io/0xpolygonzero/erigon:${JERIGON_VERSION}
-    # entrypoint: ['/bin/sh']
     container_name: node-2
     init: true
     user: root
+    healthcheck:
+      test: /home/erigon/check-node.sh
+      interval: 5s
+      retries: 10      
     command:
       - '--chain=dev'
       - '--mine'
@@ -49,9 +64,39 @@ services:
       - '30303'
     volumes:
       - erigon-data:/home/erigon/.local/share/
+      - ./assets/check-node.sh:/home/erigon/check-node.sh
     environment:
       - NODE2_RPC_PORT=${NODE2_RPC_PORT}
       - NODE1_ENODE=${NODE1_ENODE}
+    networks:
+      jerigon-test-network:
+        ipv4_address: ${NODE2_RPC_HOST}
+
+  smart-contracts:
+    image: node:20-bullseye
+    container_name: smart-contracts
+    init: true
+    user: root
+    command: 
+      - '/home/node/deploy-smart-contracts.sh'
+    depends_on:
+      node-2:
+        condition: service_healthy  
+    links:
+        - node-1        
+    ports:
+      - $NODE1_RPC_PORT
+      - $NODE2_RPC_PORT
+      - '30304'
+      - '30303'        
+    volumes:
+      - ./smart-contracts:/home/node/smart-contracts
+      - ./assets/deploy-smart-contracts.sh:/home/node/deploy-smart-contracts.sh
+    environment:
+      - HARDHAT_URL=http://${NODE1_RPC_HOST}:${NODE1_RPC_PORT}
+    networks:
+      jerigon-test-network:
+        ipv4_address: 10.5.0.7    
 
 volumes:
   erigon-data:

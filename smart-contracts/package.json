@@ -1,0 +1,23 @@
+{
+  "name": "hardhat-project",
+  "scripts": {
+    "build": "hardhat compile",
+    "clean": "hardhat clean",
+    "tx-generate-6-transfer": "hardhat run scripts/tx_generate_6_transfer.ts",
+    "tx-generate-2-sc": "hardhat run scripts/tx_generate_2_sc.ts",
+    "generate-receipt-merkle-proof": "hardhat generate-receipt-merkle-proof",
+    "get-receipt-trie-root": "hardhat get-receipt-trie-root",
+    "verify-receipt-merkle-proof": "hardhat verify-receipt-merkle-proof"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "@ethereumjs/rlp": "^4.0.1",
+    "@ethereumjs/trie": "^5.0.4",
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "axios": "^1.6.2",
+    "hardhat": "2.17.3",
+    "ping": "^0.4.4"
+  }
+}
