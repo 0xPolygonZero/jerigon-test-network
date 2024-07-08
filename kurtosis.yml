@@ -1,0 +1,4 @@
+---
+name: github.com/0xPolygonZero/jerigon-test-network
+description: |
+  A Kurtosis package that spins up simple test Jerigon network
