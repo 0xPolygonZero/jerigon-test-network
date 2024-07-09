@@ -2,8 +2,8 @@
 
 network_started () {
      # $1 - rpc url
-     # $2 - expected minimal block number
-    current_block_number=$(curl -X POST -H "Content-Type: application/json" --data '{"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id":83}'  $1 | grep "result" | awk -Wposix -F 'result\":'  '{ printf $2 }' | sed 's/["{}]//g')
+     # $2 - expected minimal block number to consider network up and running
+    current_block_number=$(cast rpc eth_blockNumber --rpc-url $1 | sed s/\"//g)
     current_block_number=$((16#${current_block_number#"0x"}))
     if [[ $current_block_number -gt $2 ]]; then
         echo 0
@@ -15,7 +15,7 @@ network_started () {
 
 function wait_network_started () {
      # $1 - rpc url
-     # $2 - expected minimal block number
+     # $2 - expected minimal block number to consider network up and running
     while true;
     do
         echo "Waiting for the network to start producing blocks..."
@@ -44,18 +44,19 @@ get_nonce_and_gas_price () {
     gas_price=$(bc <<< "2 * $gas_price")   
 }
 
+set -e
 
 if [ -z "${ETH_ADDRESS}" ] | [ -z "${ETH_PRIVATE_KEY}" ]; then
 echo "ETH_ADDRESS and ETH_PRIVATE_KEY must be set. "
 exit 1
 fi
 
-eth_rpc_url="$(kurtosis port print my-testnet el-2-erigon-lighthouse ws-rpc)"
+eth_rpc_url="$(kurtosis port print cancun-testnet el-2-erigon-lighthouse ws-rpc)"
 
 
 wait_network_started $eth_rpc_url 1
 
-# Perform few transfer value transactions
+# Perform a few transfer value transactions
 get_nonce_and_gas_price $eth_rpc_url $ETH_ADDRESS 
 echo "Generating a few value transactions"
 cast send --async --nonce $cur_nonce --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url  --gas-limit 100000 --value 1 -j "0x852DA15b70a3e197d1D668a9a481B1F4c2168a5D"
@@ -65,13 +66,38 @@ cast send --async --nonce $((cur_nonce + 1)) --legacy --from $ETH_ADDRESS --priv
 # Deploy 10 random contracts
 wait_block_time $BLOCK_INTERVAL
 get_nonce_and_gas_price $eth_rpc_url $ETH_ADDRESS 
-echo "Deploy some random test contracts"
-cat `find ./ -iname "10-random-contracts.txt"` | while read -r line; do
+echo "Deploying some random test contracts"
+cat `find . -iname "10-random-contracts.txt"` | while read -r line; do
     cast send $LEGACY_FLAG --async --nonce $cur_nonce --private-key $ETH_PRIVATE_KEY --gas-limit 250000 --gas-price $gas_price --rpc-url $eth_rpc_url -j \
         --create "$line"
     retVal=$?
     current_block=`cast rpc eth_blockNumber --rpc-url $eth_rpc_url`
     if [[ $retVal -eq 0 ]]; then
         cur_nonce=$((cur_nonce + 1))
+    else
+        echo "Failed to deploy smart contract"
+        exit 1
     fi
 done
+
+
+# Deploy a few smart contracts and call them
+echo "Deploying a few basic smart contracts"
+wait_block_time $BLOCK_INTERVAL
+get_nonce_and_gas_price $eth_rpc_url $ETH_ADDRESS 
+find . -type f -name 'geth-test*.bin' | sort | while read -r contract; do
+    echo "Deploying contract $contract"
+    cast send --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url -j --create \
+        "$(cat $contract)" | jq '.' > out.tmp.json
+    contract_address="$(jq -r '.contractAddress' out.tmp.json)"
+    echo "Calling contract $contract_address"
+    cast send --legacy --gas-limit 2000000 --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url \
+        $contract_address -j "0xDEADBEEF" | jq '.' > $contract.run.json
+done
+
+fail_count=$(cat *.json | jq -r 'select(.status != "0x1") | .transactionHash' | wc -l)
+if [[ $fail_count -gt 0 ]]; then
+    echo "it looks like some geth-contracts failed to execute"
+    exit 1
+fi
+
