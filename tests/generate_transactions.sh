@@ -59,8 +59,8 @@ wait_network_started $eth_rpc_url 1
 # Perform a few transfer value transactions
 get_nonce_and_gas_price $eth_rpc_url $ETH_ADDRESS 
 echo "Generating a few value transactions"
-cast send --async --nonce $cur_nonce --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url  --gas-limit 100000 --value 1 -j "0x852DA15b70a3e197d1D668a9a481B1F4c2168a5D"
-cast send --async --nonce $((cur_nonce + 1)) --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url  --gas-limit 100000 --value 1 -j "0x98DF8033986E2bb676038D410fa31D80b3324003"
+cast send --async --nonce $cur_nonce --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url  --gas-limit 100000 --value 1 "0x852DA15b70a3e197d1D668a9a481B1F4c2168a5D"
+cast send --async --nonce $((cur_nonce + 1)) --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url  --gas-limit 100000 --value 1 "0x98DF8033986E2bb676038D410fa31D80b3324003"
 
 
 # Deploy 10 random contracts
@@ -68,7 +68,7 @@ wait_block_time $BLOCK_INTERVAL
 get_nonce_and_gas_price $eth_rpc_url $ETH_ADDRESS 
 echo "Deploying some random test contracts"
 cat `find . -iname "10-random-contracts.txt"` | while read -r line; do
-    cast send $LEGACY_FLAG --async --nonce $cur_nonce --private-key $ETH_PRIVATE_KEY --gas-limit 250000 --gas-price $gas_price --rpc-url $eth_rpc_url -j \
+    cast send $LEGACY_FLAG --async --nonce $cur_nonce --private-key $ETH_PRIVATE_KEY --gas-limit 250000 --gas-price $gas_price --rpc-url $eth_rpc_url \
         --create "$line"
     retVal=$?
     current_block=`cast rpc eth_blockNumber --rpc-url $eth_rpc_url`
@@ -85,18 +85,19 @@ done
 echo "Deploying a few basic smart contracts"
 wait_block_time $BLOCK_INTERVAL
 get_nonce_and_gas_price $eth_rpc_url $ETH_ADDRESS 
+contract_count="$(find . -type f -name 'geth-test*.bin' | wc -l)"
 find . -type f -name 'geth-test*.bin' | sort | while read -r contract; do
     echo "Deploying contract $contract"
-    cast send --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url -j --create \
-        "$(cat $contract)" | jq '.' > out.tmp.json
-    contract_address="$(jq -r '.contractAddress' out.tmp.json)"
+    cast send --legacy --from $ETH_ADDRESS --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url --create "$(cat $contract)" > out.tmp.log
+    contract_address="$(grep "contractAddress" ./out.tmp.log | awk '{print $2}')"
     echo "Calling contract $contract_address"
     cast send --legacy --gas-limit 2000000 --private-key $ETH_PRIVATE_KEY --rpc-url $eth_rpc_url \
-        $contract_address -j "0xDEADBEEF" | jq '.' > $contract.run.json
+        $contract_address "0xDEADBEEF" > $contract.run.log
 done
 
-fail_count=$(cat *.json | jq -r 'select(.status != "0x1") | .transactionHash' | wc -l)
-if [[ $fail_count -gt 0 ]]; then
+success_count=$(find . -type f -name '*.run.log' | xargs grep '(success)' | wc -l)
+echo "Success count: $success_count, contract count: $contract_count"
+if [[ ! "$success_count" = "$contract_count" ]]; then
     echo "it looks like some geth-contracts failed to execute"
     exit 1
 fi
